@@ -2,12 +2,14 @@
 indicator("M2 Money Supply vs BTC Divergence", overlay=false)
 
 // Inputs
-lookback_period = input.int(80, "Lookback Period (weeks)", minval=1)
-divergence_threshold = input.float(45.0, "Divergence Threshold (Good DCA)", minval=1.0, step=1.0) // Good DCA zone threshold
-low_divergence_threshold = input.float(-45.0, "Low Divergence Threshold (Peaks)", minval=-100.0, step=1.0) // Threshold for upside down peak
-red_zone_divergence_threshold = input.float(-45.0, "Red Zone Divergence Threshold", minval=-100.0, step=1.0) // Threshold for red zones
+lookback_period = input.int(100, "Lookback Period (weeks)", minval=1)
+divergence_threshold = input.float(35.0, "Divergence Threshold (Good DCA)", minval=1.0, step=1.0) // Good DCA zone threshold
+low_divergence_threshold = input.float(-10.0, "Low Divergence Threshold (Peaks)", minval=-100.0, step=1.0) // Threshold for upside down peak
+red_zone_divergence_threshold = input.float(-10.0, "Red Zone Divergence Threshold", minval=-100.0, step=1.0) // Threshold for red zones
 sell_divergence_threshold = input.float(-70.0, "Sell Divergence Threshold", minval=-100.0, step=1.0) // Threshold for sell signal
 sensitivity_period = input.int(5, "Upside Down Peak Sensitivity", minval=1) // Sensitivity for peak detection
+ema_length = input.int(40, "EMA Length", minval=1) // Length for EMA smoothing
+v_shape_sensitivity = input.int(5, "V Shape Sensitivity", minval=1) // Sensitivity for V shape detection
 
 // Fetch data
 m2 = request.security("FRED:M2SL", "W", close)
@@ -25,17 +27,24 @@ divergence_min = ta.lowest(raw_divergence, lookback_period)
 divergence_max = ta.highest(raw_divergence, lookback_period)
 normalized_divergence = 100 * (raw_divergence - divergence_min) / (divergence_max - divergence_min) - 50
 
+// Apply EMA to normalized divergence
+smoothed_divergence = ta.wma(normalized_divergence, ema_length)
+
 // Determine bullish divergences for good DCA zones
-good_dca_zone = normalized_divergence > divergence_threshold
+good_dca_zone = smoothed_divergence > divergence_threshold
 
 // Detect upside down peaks with sensitivity
-upside_down_peak = (normalized_divergence < low_divergence_threshold) and (ta.lowest(normalized_divergence, sensitivity_period) == normalized_divergence)
+upside_down_peak = (smoothed_divergence < low_divergence_threshold) and (ta.lowest(smoothed_divergence, sensitivity_period) == smoothed_divergence)
 
 // Determine red zones
-red_zone = (normalized_divergence <= red_zone_divergence_threshold) and upside_down_peak
+red_zone = (smoothed_divergence <= red_zone_divergence_threshold) and upside_down_peak
 
 // Dynamic opacity for red zones based on normalized divergence strength
-red_zone_opacity = normalized_divergence <= -70.0 ? 90 : normalized_divergence <= -60.0 ? 60 : normalized_divergence <= -50.0 ? 30 : 10
+red_zone_opacity = smoothed_divergence <= -70.0 ? 90 : smoothed_divergence <= -60.0 ? 60 : smoothed_divergence <= -50.0 ? 30 : 10
+
+// V shape detection for sell signal
+v_shape_bottom = ta.lowest(smoothed_divergence, v_shape_sensitivity)
+v_shape_reversal = ta.crossunder(smoothed_divergence, sell_divergence_threshold) and (ta.valuewhen(smoothed_divergence == v_shape_bottom, smoothed_divergence, 0) == smoothed_divergence)
 
 // Colors
 bullish_color = color.green
@@ -43,7 +52,7 @@ bearish_color = color.red
 neutral_color = color.gray
 
 // Plot divergence
-plot(normalized_divergence, title="Normalized M2-BTC Divergence", color=color.blue, linewidth=2)
+plot(smoothed_divergence, title="Smoothed M2-BTC Divergence", color=color.blue, linewidth=2)
 
 // Plot zero line
 hline(0, "Zero Line", color=color.white, linestyle=hline.style_dotted)
@@ -58,11 +67,8 @@ bgcolor(good_dca_zone ? color.new(bullish_color, 90) : na, title="Good DCA Zone 
 // Highlight red zones with dynamic opacity
 bgcolor(red_zone ? color.new(color.red, red_zone_opacity) : na, title="Red Zone Background")
 
-// Check for sharp reversals on negative divergence for sell signal
-sharp_reversal = ta.crossover(normalized_divergence, sell_divergence_threshold)
-
 // Alerts
-alertcondition(normalized_divergence < sell_divergence_threshold, title="Sell Signal", message="Normalized divergence is below sell threshold, potential selling opportunity")
+alertcondition(v_shape_reversal, title="Sell Signal", message="Normalized divergence is below sell threshold, potential selling opportunity")
 alertcondition(good_dca_zone, title="Good DCA Zone", message="Good DCA Zone: Normalized divergence > divergence_threshold")
 alertcondition(upside_down_peak, title="Upside Down Peak", message="Divergence is too low and makes an upside down peak")
 alertcondition(red_zone, title="Red Zone", message="Red Zone: Divergence <= red_zone_divergence_threshold and significant upside down peak")

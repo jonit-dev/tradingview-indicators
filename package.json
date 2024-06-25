@@ -1,0 +1,8 @@
+{
+  "name": "tradingview-indicators",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:jonit-dev/tradingview-indicators.git",
+  "author": "Joao Paulo Furtado <joaopaulofurtado@live.com>",
+  "license": "MIT"
+}

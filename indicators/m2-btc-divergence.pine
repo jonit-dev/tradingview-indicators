@@ -1,0 +1,66 @@
+//@version=5
+indicator("M2 Money Supply vs BTC Divergence", overlay=false)
+
+// Inputs
+lookback_period = input.int(80, "Lookback Period (weeks)", minval=1)
+divergence_threshold = input.float(0.1, "Divergence Threshold", minval=0.01, step=0.01)
+low_divergence_threshold = input.float(-1.0, "Low Divergence Threshold", minval=-100.0, step=0.1) // Threshold for upside down peak
+red_zone_divergence_threshold = input.float(-500, "Red Zone Divergence Threshold", minval=-1000, step=0.1) // Threshold for red zones
+sensitivity_period = input.int(5, "Upside Down Peak Sensitivity", minval=1) // Sensitivity for peak detection
+
+// Fetch data
+m2 = request.security("FRED:M2SL", "W", close)
+btc_close = request.security("BTCUSD", "W", close)
+
+// Normalize and calculate percentage change
+m2_change = ta.change(m2, lookback_period) / m2[lookback_period] * 100
+btc_change = ta.change(btc_close, lookback_period) / btc_close[lookback_period] * 100
+
+// Calculate divergence
+divergence = m2_change - btc_change
+
+// Determine bearish and bullish divergences (inverted)
+bearish_div = divergence < -divergence_threshold
+bullish_div = divergence > divergence_threshold
+
+// Determine good DCA zones
+good_dca_zone = bullish_div
+
+// Detect upside down peaks with sensitivity
+upside_down_peak = (divergence < low_divergence_threshold) and (ta.lowest(divergence, sensitivity_period) == divergence)
+
+// Determine red zones
+red_zone = (divergence <= red_zone_divergence_threshold) and upside_down_peak
+
+// Colors
+bullish_color = color.green
+bearish_color = color.red
+red_zone_color = color.new(color.red, 90)
+neutral_color = color.gray
+
+// Plot divergence
+plot(divergence, title="M2-BTC Divergence", color=color.blue, linewidth=2)
+
+// Plot zero line
+hline(0, "Zero Line", color=color.white, linestyle=hline.style_dotted)
+
+// Plot threshold lines
+hline(divergence_threshold, "Upper Threshold", color=color.green, linestyle=hline.style_dashed)
+hline(-divergence_threshold, "Lower Threshold", color=color.red, linestyle=hline.style_dashed)
+
+// Highlight good DCA zones
+bgcolor(good_dca_zone ? color.new(bullish_color, 90) : na, title="Good DCA Zone Background")
+
+// Highlight red zones
+bgcolor(red_zone ? red_zone_color : na, title="Red Zone Background")
+
+// Check for sharp reversals on negative divergence for sell signal
+sharp_reversal = ta.crossover(divergence, -divergence_threshold)
+
+// Alerts
+alertcondition(bearish_div, title="Bearish Divergence", message="M2 growth outpacing BTC, potential selling opportunity")
+alertcondition(bullish_div, title="Bullish Divergence", message="BTC growth outpacing M2, potential buying opportunity")
+alertcondition(sharp_reversal, title="Sharp Reversal on Negative Divergence", message="Sharp reversal detected on negative divergence, potential selling opportunity")
+alertcondition(good_dca_zone, title="Good DCA Zone", message="Good DCA Zone: Positive divergence")
+alertcondition(upside_down_peak, title="Upside Down Peak Exit", message="Divergence is too low and makes an upside down peak, time to get out")
+alertcondition(red_zone, title="Red Zone", message="Red Zone: Divergence <= -500 and significant upside down peak")

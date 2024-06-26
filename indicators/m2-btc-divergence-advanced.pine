@@ -1,0 +1,123 @@
+//@version=5
+indicator("Merged Indicator: M2 Money Supply vs BTC Divergence with Normalized RSI", overlay=false)
+
+// Inputs for the first indicator
+lookback_period = input.int(80, "Lookback Period (weeks)", minval=1)
+divergence_threshold = input.float(35.0, "Divergence Threshold (Good DCA)", minval=1.0, step=1.0)
+low_divergence_threshold = input.float(-30.0, "Low Divergence Threshold (Peaks)", minval=-100.0, step=1.0)
+red_zone_divergence_threshold = input.float(-30.0, "Red Zone Divergence Threshold", minval=-100.0, step=1.0)
+sensitivity_period = input.int(5, "Upside Down Peak Sensitivity", minval=1)
+ema_length = input.int(14, "EMA Length", minval=1)
+short_ma_length = input.int(5, "Short MA Length", minval=1)
+rsi_length = input.int(80, "RSI Length", minval=1)
+
+// Inputs for the second indicator
+sma_length = 50
+long_sma_length = 200
+sma_diff_length = 14
+amplification_factor = input.float(10, "Amplification Factor", minval=1, step=0.1)
+
+// Fetch data
+m2 = request.security("FRED:M2SL", "W", close)
+btc_close = request.security("BTCUSD", "W", close)
+usm2 = request.security("USM2", "M", close)
+
+// Normalize and calculate percentage change
+m2_change = ta.change(m2, lookback_period) / m2[lookback_period] * 100
+btc_change = ta.change(btc_close, lookback_period) / btc_close[lookback_period] * 100
+
+// Calculate divergence
+raw_divergence = m2_change - btc_change
+
+// Normalize divergence to a scale of -100 to 100
+divergence_min = ta.lowest(raw_divergence, lookback_period)
+divergence_max = ta.highest(raw_divergence, lookback_period)
+normalized_divergence = 100 * (raw_divergence - divergence_min) / (divergence_max - divergence_min) - 50
+
+// Apply EMA to normalized divergence
+smoothed_divergence = ta.ema(normalized_divergence, ema_length)
+double_smoothed_divergence = ta.ema(smoothed_divergence, ema_length)
+
+// Apply short-term moving average to the smoothed divergence using EMA
+short_ma = ta.ema(smoothed_divergence, short_ma_length)
+double_short_ma = ta.ema(short_ma, short_ma_length)
+
+// Calculate RSI
+rsi = ta.rsi(btc_close, rsi_length)
+
+// Normalize RSI to a scale of -100 to 100
+normalized_rsi = 100 * (rsi - 50) / 50
+sma_normalized_rsi = ta.sma(normalized_rsi, 14)
+
+// Determine bullish divergences for good DCA zones
+good_dca_zone = double_smoothed_divergence > divergence_threshold
+
+// Detect upside down peaks with sensitivity
+upside_down_peak = (double_smoothed_divergence < low_divergence_threshold) and (ta.lowest(double_smoothed_divergence, sensitivity_period) == double_smoothed_divergence)
+
+// Determine red zones
+red_zone = (double_smoothed_divergence <= red_zone_divergence_threshold) and upside_down_peak and sma_normalized_rsi > divergence_threshold
+
+// Sell signal based on moving average crossover (double-smoothed divergence crossing below double-short MA within red zone and RSI confirmation)
+sell_signal = red_zone and ta.crossunder(double_smoothed_divergence, double_short_ma) and (rsi > 70)
+
+// Calculate the 50-period SMA for USM2BRL 
+usm2_sma = ta.sma(usm2, sma_length)
+
+// Calculate the 200-period SMA for a broader trend perspective
+usm2_long_sma = ta.sma(usm2, long_sma_length)
+
+// Calculate the difference between USM2 and its 50-period SMA
+usm2_diff = usm2 - usm2_sma
+
+// Calculate the percentage change
+usm2_percent_change = (usm2 - usm2_sma) / usm2_sma * 100
+
+// Apply the amplification factor to the percentage change
+amplified_usm2_diff = usm2_percent_change * amplification_factor
+
+// Calculate the 14-period SMA of the amplified difference
+amplified_usm2_diff_sma = ta.sma(amplified_usm2_diff, sma_diff_length)
+
+// Determine bullish and bearish conditions
+bullish_condition = usm2 > usm2_sma
+bearish_condition = usm2 < usm2_sma
+
+// Colors
+bullish_color = color.green
+bearish_color = color.red
+neutral_color = color.gray
+
+// Plot divergence
+plot(double_smoothed_divergence, title="Double-Smoothed M2-BTC Divergence", color=color.blue, linewidth=2)
+
+// Plot short-term moving average
+plot(double_short_ma, title="Double-Short MA", color=color.orange, linewidth=2)
+
+// Plot normalized RSI
+plot(sma_normalized_rsi, title="Normalized RSI", color=color.white, linewidth=2)
+
+// Plot zero line
+hline(0, "Zero Line", color=color.white, linestyle=hline.style_dotted)
+
+// Plot threshold lines
+hline(divergence_threshold, "Upper Threshold", color=color.green, linestyle=hline.style_dashed)
+hline(low_divergence_threshold, "Lower Threshold", color=color.red, linestyle=hline.style_dashed)
+
+// Highlight good DCA zones
+bgcolor(good_dca_zone ? color.new(bullish_color, 50) : na, title="Good DCA Zone Background")
+
+// Highlight red zones with dynamic opacity
+bgcolor(red_zone ? color.new(color.red, 50) : na, title="Red Zone Background")
+
+// Plot the amplified difference as a histogram with color coding and transparency
+plot(amplified_usm2_diff, title="Amplified USM2 Difference", color=color.new(bullish_condition ? color.green : color.red, 50), style=plot.style_histogram, linewidth=2)
+
+// Plot the 14-period SMA of the amplified difference
+plot(amplified_usm2_diff_sma, title="SMA of Amplified USM2 Difference", color=color.new(color.purple, 50), linewidth=2)
+
+// Alerts
+alertcondition(sell_signal, title="Sell Signal", message="Double-smoothed divergence crossed below double-short MA in red zone and RSI is overbought, potential selling opportunity")
+alertcondition(good_dca_zone, title="Good DCA Zone", message="Good DCA Zone: Double-smoothed divergence > divergence_threshold")
+alertcondition(upside_down_peak, title="Upside Down Peak", message="Double-smoothed divergence is too low and makes an upside down peak")
+alertcondition(red_zone, title="Red Zone", message="Red Zone: Double-smoothed divergence <= red_zone_divergence_threshold and significant upside down peak")

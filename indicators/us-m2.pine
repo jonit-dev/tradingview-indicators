@@ -1,0 +1,49 @@
+//@version=5
+indicator("US M2", overlay=false)
+
+// Import USM2 data using the "USM2" symbol
+usm2 = request.security("USM2", "M", close)
+
+// Calculate the 50-period SMA for USM2BRL 
+sma_length = 50
+usm2_sma = ta.sma(usm2, sma_length)
+
+// Calculate the 200-period SMA for a broader trend perspective
+long_sma_length = 200
+usm2_long_sma = ta.sma(usm2, long_sma_length)
+
+// Calculate the difference between USM2 and its 50-period SMA
+usm2_diff = usm2 - usm2_sma
+
+// Amplify the difference for better visibility
+amplification_factor = 100
+amplified_usm2_diff = usm2_diff * amplification_factor
+
+// Determine bullish and bearish conditions
+bullish_condition = usm2 > usm2_sma
+bearish_condition = usm2 < usm2_sma
+
+// Calculate the 14-period SMA of the amplified difference
+sma_diff_length = 14
+amplified_usm2_diff_sma = ta.sma(amplified_usm2_diff, sma_diff_length)
+
+// Plot USM2 data in the oscillator pane
+plot(usm2, title="USM2 Money Supply", color=color.blue, linewidth=2, display=display.none) 
+plot(usm2_long_sma, title="USM2 SMA 200", color=color.red, linewidth=3, display=display.none)
+
+// Plot the amplified difference as a histogram with color coding
+hline(0, "Zero Line", color=color.gray)
+plot(amplified_usm2_diff, title="USM2 Difference", color=bullish_condition ? color.green : color.red, style=plot.style_histogram, linewidth=2)
+
+// Plot the 14-period SMA of the amplified difference on top of the underlying chart
+plot(amplified_usm2_diff_sma, title="SMA of Amplified USM2 Difference", color=color.purple, linewidth=2, display=display.all, trackprice=true)
+
+// Calculate and plot the moving average cross signals
+bullish_cross_condition = ta.crossover(usm2_sma, usm2_long_sma)
+plotshape(series=bullish_cross_condition, location=location.abovebar, color=color.green, style=shape.triangleup, title="Bullish Cross")
+bearish_cross_condition = ta.crossunder(usm2_sma, usm2_long_sma)
+plotshape(series=bearish_cross_condition, location=location.belowbar, color=color.red, style=shape.triangledown, title="Bearish Cross")
+
+// Ensure SMA plots are on top
+plot(usm2, title="USM2 Money Supply", color=color.blue, linewidth=2)
+plot(usm2_long_sma, title="USM2 SMA 200", color=color.red, linewidth=3)

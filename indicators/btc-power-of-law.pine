@@ -1,0 +1,30 @@
+//@version=5
+indicator("BTC - Power of Law", overlay=true)
+
+// User input for number of standard deviations
+stdDevMultiplier = input.float(2, title="Standard Deviation Multiplier", minval=0.1)
+
+// Calculate the days since Bitcoin's inception (January 3, 2009)
+var inceptionDate = timestamp(2009, 1, 3, 0, 0)
+daysSinceInception = (time - inceptionDate) / 86400000
+
+// Define the exponential model: price = exp(5.71 * ln(days) - 38.16)
+modelPrice = math.exp(5.71 * math.log(daysSinceInception) - 38.16)
+
+// Calculate the standard deviation of the differences between actual prices and model prices
+window = 20  // You can adjust the window size
+priceDiff = close - modelPrice
+stdDev = ta.stdev(priceDiff, window)
+
+
+// Calculate top and bottom prices
+topPrice = modelPrice * 3.0 // Assuming top price is 300% of the fair price
+bottomPrice = modelPrice * 0.42 // Bottom price is 42% of the fair price
+
+// Plot the model price
+plot(modelPrice, color=color.red, linewidth=2, title="Price Model")
+
+
+// Plot the top and bottom prices
+plot(topPrice, color=color.purple, linewidth=2, title="Top Price")
+plot(bottomPrice, color=color.orange, linewidth=2, title="Bottom Price")

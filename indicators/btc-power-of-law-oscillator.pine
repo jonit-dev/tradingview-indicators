@@ -1,0 +1,45 @@
+//@version=5
+indicator("BTC - Power Law Oscillator", overlay=false)
+
+// Calculate the days since Bitcoin's inception (January 3, 2009)
+var inceptionDate = timestamp(2009, 1, 3, 0, 0)
+daysSinceInception = (time - inceptionDate) / 86400000
+
+// Define the exponential model: price = exp(5.71 * ln(days) - 38.16)
+modelPrice = math.exp(5.71 * math.log(daysSinceInception) - 38.16)
+
+// Calculate the Power Law Oscillator as the percentage deviation from the model price
+oscillator = ((close - modelPrice) / modelPrice) * 100
+
+// Find the highest and lowest points in the oscillator for normalization
+var float maxOscillator = na
+var float minOscillator = na
+
+if (na(maxOscillator) or oscillator > maxOscillator)
+    maxOscillator := oscillator
+if (na(minOscillator) or oscillator < minOscillator)
+    minOscillator := oscillator
+
+// Normalize the oscillator to a 0-100 range with increased sensitivity for higher values using quadratic transformation
+normalizeOscillator(float value) =>
+    if (value < 50)
+        (value - minOscillator) / (50 - minOscillator) * 50
+    else
+        50 + math.pow((value - 50) / (maxOscillator - 50), 2) * 50
+
+oscillatorNormalized = normalizeOscillator(oscillator)
+
+// Define the upper and lower bands
+upperBand = 50
+lowerBand = 15
+
+// Plot the normalized oscillator
+plot(oscillatorNormalized, color=color.white, linewidth=2, title="Power Law Oscillator")
+
+// Plot the upper and lower bands
+hline(upperBand, "Upper Band (20%)", color=color.red, linewidth=2)
+hline(lowerBand, "Lower Band (5%)", color=color.green, linewidth=2)
+
+// Fill the areas above and below the bands
+fill(hline(upperBand), hline(100), color=color.new(color.red, 90), title="Top Zone")
+fill(hline(lowerBand), hline(0), color=color.new(color.green, 90), title="Bottom Zone")

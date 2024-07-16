@@ -1,0 +1,25 @@
+//@version=4
+study("Mayer Multiple Oscillator (x100)", shorttitle="MMO x100", overlay=false, precision=2)
+
+// Inputs
+smaLength = input(200, title="SMA Length")
+overvaluedLevel = input(240, title="Overvalued Level (x100)", step=1)
+undervaluedLevel = input(80, title="Undervalued Level (x100)", step=1)
+
+// Calculations
+price = close
+sma200 = sma(close, smaLength)
+mayerMultiple = (price / sma200) * 100  // Multiplied by 100 for 2 decimal precision
+
+// Plotting the Mayer Multiple as an oscillator
+plot(mayerMultiple, title="Mayer Multiple x100", color=color.orange, linewidth=2)
+hline(overvaluedLevel, title="Overvalued", color=color.red, linewidth=2)
+hline(undervaluedLevel, title="Undervalued", color=color.green, linewidth=2)
+hline(100, title="Fair Value", color=color.blue, linewidth=1, linestyle=hline.style_dotted)
+
+// Adding semi-transparent bands
+overvaluedFill = mayerMultiple > overvaluedLevel ? color.new(color.red, 80) : na
+undervaluedFill = mayerMultiple < undervaluedLevel ? color.new(color.green, 80) : na
+
+fill(plot(overvaluedLevel), plot(mayerMultiple), color=overvaluedFill, title="Overvalued Band")
+fill(plot(undervaluedLevel), plot(mayerMultiple), color=undervaluedFill, title="Undervalued Band")

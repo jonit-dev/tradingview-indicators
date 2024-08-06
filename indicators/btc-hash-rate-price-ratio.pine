@@ -1,0 +1,68 @@
+//@version=5
+indicator("Refined BTC Market Top/Bottom Indicator", overlay=false)
+
+// Inputs
+smoothing_period = input(14, title="Smoothing Period")
+hash_period = input(7, title="Hash Rate Smoothing Period")
+hashrate_symbol = input.symbol("BTC_HASHRATE", title="Hash Rate Data Source")
+rsi_period = input(28, title="RSI Period")
+mvrv_period = input(30, title="MVRV Period")
+signal_threshold = input(2.5, title="Signal Threshold (out of 3)")
+
+// Fetch BTC price and hash rate data
+btc_price = request.security("BTCUSD", timeframe.period, close)
+btc_hashrate = request.security(hashrate_symbol, timeframe.period, close)
+
+// Calculate the ratio of hash rate to price
+ratio = btc_hashrate / btc_price
+
+// Smooth the ratio using EMA
+smooth_ratio = ta.ema(ratio, hash_period)
+
+// Normalize the ratio for better visualization
+normalized_ratio = (smooth_ratio - ta.lowest(smooth_ratio, 252)) / (ta.highest(smooth_ratio, 252) - ta.lowest(smooth_ratio, 252)) * 100
+
+// Calculate and smooth RSI
+rsi = ta.rsi(btc_price, rsi_period)
+smooth_rsi = ta.ema(rsi, smoothing_period)
+
+// Calculate and smooth a simple MVRV ratio (using price / moving average as a proxy)
+mvrv = btc_price / ta.sma(btc_price, mvrv_period)
+normalized_mvrv = (mvrv - ta.lowest(mvrv, 252)) / (ta.highest(mvrv, 252) - ta.lowest(mvrv, 252)) * 100
+smooth_mvrv = ta.ema(normalized_mvrv, smoothing_period)
+
+// Scoring function
+score(value, lower, upper) =>
+    value <= lower ? -1 : value >= upper ? 1 : 0
+
+// Calculate scores
+hash_price_score = score(normalized_ratio, 20, 80)
+rsi_score = score(smooth_rsi, 30, 70)
+mvrv_score = score(smooth_mvrv, 20, 80)
+
+// Total score
+total_score = hash_price_score + rsi_score + mvrv_score
+
+// Generate signals
+is_top = total_score >= signal_threshold
+is_bottom = total_score <= -signal_threshold
+
+// Plot the indicators
+plot(normalized_ratio, title="Hash Rate to Price Ratio", color=color.blue)
+plot(smooth_rsi, title="Smoothed RSI", color=color.purple)
+plot(smooth_mvrv, title="Smoothed Normalized MVRV", color=color.orange)
+
+// Plot signals
+plotshape(is_top, title="Potential Top", location=location.top, color=color.red, style=shape.triangledown, size=size.normal)
+plotshape(is_bottom, title="Potential Bottom", location=location.bottom, color=color.green, style=shape.triangleup, size=size.normal)
+
+// Create green and red zones based on new conditions
+red_zone_condition = (smooth_mvrv > normalized_ratio) and (smooth_rsi > normalized_ratio)
+green_zone_condition = (smooth_mvrv < normalized_ratio) and (smooth_rsi < normalized_ratio) and (smooth_mvrv < 15)
+
+bgcolor(red_zone_condition ? color.new(color.red, 80) : na)
+bgcolor(green_zone_condition ? color.new(color.green, 80) : na)
+
+// Plot dotted lines at 15 and 75
+hline(15, "Lower Threshold", color=color.gray, linestyle=hline.style_dotted)
+hline(75, "Upper Threshold", color=color.gray, linestyle=hline.style_dotted)

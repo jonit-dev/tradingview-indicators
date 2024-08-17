@@ -1,5 +1,5 @@
 //@version=5
-indicator("BTC x Gold divergence", overlay=false)
+indicator("BTC x Gold divergence - Weekly", overlay=false)
 
 // Input options
 btcSymbol = input.symbol("BTCUSD", "Bitcoin Symbol")

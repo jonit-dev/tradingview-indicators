@@ -1,0 +1,77 @@
+//@version=5
+indicator("BTC - Power Law Oscillator v2", overlay=false)
+
+// User-adjustable model parameters
+modelSlope = input.float(title="Model Slope (Coefficient)", defval=5.71, step=0.01)
+modelIntercept = input.float(title="Model Intercept", defval=-38.16, step=0.1)
+
+// Calculate the days since Bitcoin's inception (January 3, 2009)
+var inceptionDate = timestamp(2009, 1, 3, 0, 0)
+var float daysSinceInception = na
+if ta.change(time("D"))
+    daysSinceInception := (time - inceptionDate) / 86400000
+// Set minimum days to avoid extreme values
+minDays = 30
+daysSinceInception := math.max(daysSinceInception, minDays)
+
+// Define the exponential model: price = exp(modelSlope * ln(days) + modelIntercept)
+modelPrice = math.exp(modelSlope * math.log(daysSinceInception) + modelIntercept)
+
+// Calculate the Power Law Oscillator as the percentage deviation from the model price
+oscillator = ((close - modelPrice) / modelPrice) * 100
+
+// User-defined lookback period for normalization
+lookback = input.int(title="Normalization Lookback (Days)", defval=365, minval=1)
+
+// Calculate max and min oscillator over the lookback period
+maxOscillator = ta.highest(oscillator, lookback)
+minOscillator = ta.lowest(oscillator, lookback)
+
+// Normalize the oscillator to a 0-100 range with increased sensitivity for higher values using quadratic transformation
+normalizeOscillator(float value) =>
+    if (value < 50)
+        (value - minOscillator) / (50 - minOscillator) * 50
+    else
+        50 + math.pow((value - 50) / (maxOscillator - 50), 2) * 50
+
+oscillatorNormalized = normalizeOscillator(oscillator)
+
+// User-adjustable smoothing period
+smoothingPeriod = input.int(title="Smoothing Period", defval=14, minval=1)
+
+// Smooth the oscillator
+oscillatorSmoothed = ta.ema(oscillatorNormalized, smoothingPeriod)
+
+// Define the upper and lower bands
+upperBand = 50
+lowerBand = 15
+
+// Color based on oscillator level
+oscColor = oscillatorSmoothed > upperBand ? color.red :
+           oscillatorSmoothed < lowerBand ? color.green :
+           color.blue
+
+// Plot the smoothed oscillator with dynamic color
+plot(oscillatorSmoothed, color=oscColor, linewidth=2, title="Power Law Oscillator")
+
+// Plot the upper and lower bands
+hlineUpper = hline(upperBand, "Upper Band (50)", color=color.red, linewidth=2)
+hlineLower = hline(lowerBand, "Lower Band (15)", color=color.green, linewidth=2)
+
+// Fill the areas above and below the bands
+fill(hlineUpper, hline(100), color=color.new(color.red, 90), title="Top Zone")
+fill(hlineLower, hline(0), color=color.new(color.green, 90), title="Bottom Zone")
+
+// Background color for overbought and oversold zones
+bgcolor(oscillatorNormalized > upperBand ? color.new(color.red, 90) :
+       oscillatorNormalized < lowerBand ? color.new(color.green, 90) :
+       na, title="Background Zones")
+
+// Alert conditions
+crossAbove = ta.crossover(oscillatorSmoothed, upperBand)
+crossBelow = ta.crossunder(oscillatorSmoothed, lowerBand)
+
+// Create alerts
+alertcondition(crossAbove, title="Oscillator Crosses Above Upper Band", message="BTC Power Law Oscillator has crossed above the upper band.")
+alertcondition(crossBelow, title="Oscillator Crosses Below Lower Band", message="BTC Power Law Oscillator has crossed below the lower band.")
+ 

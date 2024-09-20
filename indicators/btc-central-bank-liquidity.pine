@@ -81,45 +81,73 @@ osc_max = ta.highest(smoothed_oscillator, zscore_length)
 normalized_oscillator = 100 * (smoothed_oscillator - osc_min) / (osc_max - osc_min)
 
 // ---------------------------
-// Dynamic Coloring
+// Dynamic Coloring for Oscillator
 // ---------------------------
 osc_color = normalized_oscillator > threshold_upper ? color.red : normalized_oscillator < threshold_lower ? color.green : color.yellow
 
 // ---------------------------
-// Plotting
-// ---------------------------
-// Plot the normalized oscillator
-plot(normalized_oscillator, color=osc_color, linewidth=2, title="Enhanced Power Law Oscillator")
-
 // Determine if the liquidity is rising or falling
-cbs_diff = scaled_cbs_zscore - scaled_cbs_zscore[1]
-liquidity_color = #33793554
-
-// Plot the scaled Central Bank Liquidity Histogram with dynamic colors
-plot(scaled_cbs_zscore, color=liquidity_color, style=plot.style_histogram, title="Central Bank Liquidity (Z-Score)", linewidth=2)
-
-// Add a Moving Average for Central Bank Liquidity (Simple Moving Average)
+// ---------------------------
 cbs_ma = ta.sma(scaled_cbs_zscore, cbs_ma_length)
 
 // Determine if cbs_ma is rising or falling
 cbs_ma_diff = cbs_ma - cbs_ma[1]
 
 // Conditional color for CBS MA
-cbs_ma_color = (cbs_ma > 20 or cbs_ma < -20) ? color.green : (cbs_ma_diff < 0) ? color.red : (cbs_ma_diff > 0 and cbs_ma >= -20 and cbs_ma <= 20) ? color.yellow :color.white  
+cbs_ma_color = (cbs_ma > 20 or cbs_ma < -20) ? color.green : (cbs_ma_diff < 0) ? color.red : (cbs_ma_diff > 0 and cbs_ma >= -20 and cbs_ma <= 20) ? color.yellow : color.white
+// ---------------------------
+// Plotting
+// ---------------------------
+// Plot the normalized oscillator
+plot(normalized_oscillator, color=osc_color, linewidth=2, title="Enhanced Power Law Oscillator")
+
+// Plot the scaled Central Bank Liquidity Histogram with dynamic colors
+liquidity_color = #33793554
+plot(scaled_cbs_zscore, color=liquidity_color, style=plot.style_histogram, title="Central Bank Liquidity (Z-Score)", linewidth=2)
+
 // Plot the Central Bank Liquidity MA with dynamic color
 plot(cbs_ma, color=cbs_ma_color, linewidth=2, title="Central Bank Liquidity MA")
 
+// ---------------------------
+// Define Color Constants
+// ---------------------------
+osc_red = color.red
+osc_green = color.green
+osc_yellow = color.yellow
+
+cbs_ma_red = color.red
+cbs_ma_green = color.green
+cbs_ma_yellow = color.yellow
+cbs_ma_white = color.white
+
+// ---------------------------
+// Alignment Detection and Emojis
+// ---------------------------
+// Check for alignment of red colors
+both_red = (osc_color == color.red) and (cbs_ma_color == color.red)
+
+// Check for alignment of green colors
+both_green = (osc_color == color.green) and (cbs_ma_color == color.green)
+
+// Add labels with emojis at alignment points
+if both_red
+    label.new(bar_index, normalized_oscillator, text='💀', style=label.style_label_down, color=color.new(color.black, 80), textcolor=color.white) // 80 is a higher alpha value for more transparency
+if both_green
+    label.new(bar_index, normalized_oscillator, text='💰', style=label.style_label_down, color=color.new(color.black, 80), textcolor=color.white) // Adjust alpha for transparency
 
 
- 
+// ---------------------------
+// Background Coloring
+// ---------------------------
+bg_color = both_red ? color.new(color.maroon, 85) : both_green ? color.new(color.lime, 85) : normalized_oscillator > threshold_upper ? color.new(color.red, 85) : normalized_oscillator < threshold_lower ? color.new(color.green, 85) : na
+bgcolor(bg_color, title="Buy/Sell Zones")
+
+
+// ---------------------------
 // Plot Threshold Lines
+// ---------------------------
 hline(threshold_upper, title="Upper Threshold", color=color.gray, linestyle=hline.style_dotted)
 hline(threshold_lower, title="Lower Threshold", color=color.gray, linestyle=hline.style_dotted)
-
-// Shaded Zones
-bgcolor(normalized_oscillator > threshold_upper ? color.new(color.red, 85) :
-       normalized_oscillator < threshold_lower ? color.new(color.green, 85) :
-       na, title="Buy/Sell Zones")
 
 // ---------------------------
 // Peak and Trough Detection
@@ -127,5 +155,3 @@ bgcolor(normalized_oscillator > threshold_upper ? color.new(color.red, 85) :
 lookback = input.int(5, title="Peak/Trough Lookback", minval=1)
 is_peak = ta.pivothigh(normalized_oscillator, lookback, lookback)
 is_trough = ta.pivotlow(normalized_oscillator, lookback, lookback)
-
- 

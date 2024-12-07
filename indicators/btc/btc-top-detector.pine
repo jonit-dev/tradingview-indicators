@@ -1,0 +1,122 @@
+//@version=5
+indicator("BTC Top Oscillator", shorttitle="BTC Heat", format=format.price)
+
+// ========================
+// User Inputs
+// ========================
+expCapFactor = input.float(2.5, title="Exponential Cap Factor", minval=1.0, step=0.1)
+smoothingLength = input.int(100, title="Smoothing Length (EMA)", minval=10)
+powerLawLength = input.int(365, title="Power Law Length", minval=50)
+deviationThreshold = input.float(1.5, title="Max Deviation Threshold", minval=1.0, step=0.1)
+fomo_length = input.int(30, title="FOMO Detection Period", minval=10)
+
+// ========================
+// Power Law Calculation
+// ========================
+calculatePowerLaw() =>
+    float sum_x = 0.0
+    float sum_y = 0.0
+    float sum_xy = 0.0
+    float sum_x2 = 0.0
+    int validPoints = 0
+    
+    for i = 0 to powerLawLength - 1
+        if bar_index - i >= 0
+            price = close[i]
+            if price > 0
+                days = powerLawLength - i
+                log_days = math.log(days)
+                log_price = math.log(price)
+                
+                sum_x += log_days
+                sum_y += log_price
+                sum_xy += log_days * log_price
+                sum_x2 += log_days * log_days
+                validPoints += 1
+    
+    float slope = na
+    float intercept = na
+    float baseline = na
+    
+    if validPoints > 0
+        float denominator = (validPoints * sum_x2 - sum_x * sum_x)
+        if denominator != 0
+            slope := (validPoints * sum_xy - sum_x * sum_y) / denominator
+            intercept := (sum_y - slope * sum_x) / validPoints
+            days_current = powerLawLength
+            baseline := math.exp(intercept) * math.pow(days_current, slope)
+    
+    baseline
+
+// ========================
+// Main Calculations
+// ========================
+// Power law baseline
+powerLawBaseline = calculatePowerLaw()
+exponentialCap = na(powerLawBaseline) ? na : powerLawBaseline * expCapFactor
+
+// Price trends
+avgTrend = ta.ema(close, smoothingLength)
+fomo_surge = ta.ema(close, fomo_length)
+fomo_base = ta.ema(close, fomo_length * 2)
+
+// Calculate components for the oscillator
+priceToBaseline = powerLawBaseline != 0 ? close / powerLawBaseline - 1 : 0
+priceToExpCap = exponentialCap != 0 ? close / exponentialCap : 0
+trendDeviation = avgTrend != 0 ? close / avgTrend - 1 : 0
+fomoRatio = fomo_base != 0 ? fomo_surge / fomo_base - 1 : 0
+
+// Normalize and combine metrics
+normalize(value, min, max) =>
+    math.max(math.min((value - min) / (max - min), 1), 0)
+
+// Calculate final oscillator value (0-100)
+oscillatorValue = 0.0
+
+// Weight different components
+baselineWeight = normalize(priceToBaseline, 0, expCapFactor - 1) * 40
+deviationWeight = normalize(trendDeviation, 0, deviationThreshold - 1) * 30
+fomoWeight = normalize(fomoRatio, 0, 1) * 30
+
+oscillatorValue := math.min(baselineWeight + deviationWeight + fomoWeight, 100)
+
+// Smooth the oscillator
+smoothedOscillator = ta.ema(oscillatorValue, 5)
+
+// ========================
+// Plotting
+// ========================
+// Define colors with transparency
+colorSuperGreen = color.new(#00ff00, 85)  // Light green for extremely low values
+colorGreen = color.new(#00ff00, 0)
+colorYellow = color.new(#ffff00, 0)
+colorRed = color.new(#ff0000, 0)
+colorDarkRed = color.new(#8B0000, 85)    // Dark red for extremely high values
+
+// Get color for the main line
+getColor(value) =>
+    value <= 40 ? colorGreen :
+         value <= 70 ? colorYellow :
+         colorRed
+
+// Plot the main oscillator line
+plot(smoothedOscillator, "Top Detection", color=getColor(smoothedOscillator), linewidth=2)
+
+// Plot zone boundaries
+hline(40, "Normal/FOMO Boundary", color=color.new(colorYellow, 50), linestyle=hline.style_dashed)
+hline(70, "FOMO/Top Boundary", color=color.new(colorRed, 50), linestyle=hline.style_dashed)
+hline(80, "Extreme Top Zone", color=color.new(colorDarkRed, 50), linestyle=hline.style_dashed)
+hline(5, "Extreme Low Zone", color=color.new(colorSuperGreen, 50), linestyle=hline.style_dashed)
+
+// Fill extreme zones
+fill(hline(80), hline(100), color=colorDarkRed, title="Extreme Top Zone")    // Dark red zone above 80
+fill(hline(0), hline(5), color=colorSuperGreen, title="Extreme Low Zone")    // Light green zone below 5
+
+// ========================
+// Alerts
+// ========================
+alertcondition(ta.crossover(smoothedOscillator, 80), "Extreme Top Warning", "Price entering extreme top zone")
+alertcondition(ta.crossover(smoothedOscillator, 70), "Top Zone Warning", "Price entering potential top zone")
+alertcondition(ta.crossover(smoothedOscillator, 40), "FOMO Zone Warning", "Price entering FOMO zone")
+alertcondition(ta.crossunder(smoothedOscillator, 40), "Normal Zone", "Price returning to normal zone")
+alertcondition(ta.crossunder(smoothedOscillator, 5), "Extreme Low", "Price entering extreme low zone")

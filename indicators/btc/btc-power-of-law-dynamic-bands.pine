@@ -1,0 +1,49 @@
+//@version=5
+indicator("BTC - Power Law Oscillator with Dynamic Bands", overlay=false)
+
+// Calculate the days since Bitcoin's inception (January 3, 2009)
+var inceptionDate = timestamp(2009, 1, 3, 0, 0)
+daysSinceInception = (time - inceptionDate) / 86400000
+
+// Define the exponential model: price = exp(5.71 * ln(days) - 38.16)
+modelPrice = math.exp(5.71 * math.log(daysSinceInception) - 38.16)
+
+// Calculate the Power Law Oscillator as the percentage deviation from the model price
+oscillator = ((close - modelPrice) / modelPrice) * 100
+
+// Input for the percentile calculation period
+length = input.int(200, minval=1, title="Percentile Calculation Period")
+
+// Create arrays to store oscillator values
+var float[] osc_values = array.new_float(0)
+
+// Update the array with the latest oscillator value
+if barstate.isrealtime or barstate.isconfirmed
+    array.unshift(osc_values, oscillator)
+    if array.size(osc_values) > length
+        array.pop(osc_values)
+
+// Function to calculate percentiles
+percentile(float[] arr, float percent) =>
+    arr_sorted = array.copy(arr)
+    array.sort(arr_sorted, order.ascending)
+    index = math.floor((array.size(arr_sorted) - 1) * percent / 100)
+    array.get(arr_sorted, index)
+
+// Calculate upper and lower bands based on percentiles
+upper_percentile = input.float(90, "Upper Percentile", minval=50, maxval=100)
+lower_percentile = input.float(45, "Lower Percentile", minval=0, maxval=50)
+
+upperBand = percentile(osc_values, upper_percentile)
+lowerBand = percentile(osc_values, lower_percentile)
+
+// Plot the oscillator
+plot(oscillator, color=color.white, linewidth=2, title="Power Law Oscillator")
+
+// Plot the upper and lower bands
+plot(upperBand, color=color.red, linewidth=2, title="Upper Band")
+plot(lowerBand, color=color.green, linewidth=2, title="Lower Band")
+
+// Highlight the overbought and oversold zones
+bgcolor(oscillator > upperBand ? color.new(color.red, 80) : na)
+bgcolor(oscillator < lowerBand ? color.new(color.green, 80) : na)

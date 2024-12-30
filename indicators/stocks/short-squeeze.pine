@@ -1,0 +1,53 @@
+//@version=5
+indicator("Short Squeeze Momentum with Volume", shorttitle="SQM_Vol", overlay=false)
+
+// Input parameters
+length = input.int(14, "RSI Length")
+bbLength = input.int(20, "Bollinger Band Length")
+bbMult = input.float(2.0, "Bollinger Band Multiplier")
+volumeLength = input.int(20, "Volume SMA Length")
+
+// Calculate RSI
+rsi = ta.rsi(close, length)
+
+// Calculate Bollinger Bands
+basis = ta.sma(close, bbLength)
+dev = bbMult * ta.stdev(close, bbLength)
+upperBB = basis + dev
+lowerBB = basis - dev
+
+// Volume analysis
+volumeSMA = ta.sma(volume, volumeLength)
+volRatio = volume / volumeSMA
+
+// Calculate price position relative to Bollinger Bands
+bbPosition = (close - lowerBB) / (upperBB - lowerBB)
+
+// Short squeeze momentum calculation
+momentum = (rsi / 100) * bbPosition * volRatio
+
+// Generate squeeze signals
+squeezeTrigger = momentum > 1.5 and close > upperBB
+
+// Color coding based on momentum
+momentumColor = momentum > 1.5 ? color.green : momentum < 0.5 ? color.red : color.blue
+
+// Plotting Short Squeeze Momentum
+plot(momentum, "Squeeze Momentum", color=momentumColor, linewidth=2)  
+
+// Volume Histogram Plot
+// Determine if volume is increasing or decreasing
+volIncrease = volume > volume[1]
+volColor = volIncrease ? color.new(color.green, 70) : color.new(color.red, 70)
+
+// Plot volume as semi-transparent histogram
+plot(volume, title="Volume", color=volColor, style=plot.style_columns, linewidth=1)
+
+// Alert conditions
+alertcondition(squeezeTrigger, title="Short Squeeze Alert", message="Potential short squeeze detected!")
+
+// Add horizontal lines for reference
+hline(2.0, "Strong Squeeze", color=color.green, linestyle=hline.style_dashed)
+hline(1.5, "Moderate Squeeze", color=color.yellow, linestyle=hline.style_dashed)
+hline(1.0, "Neutral", color=color.gray, linestyle=hline.style_dashed)
+hline(0.5, "Weak", color=color.red, linestyle=hline.style_dashed)

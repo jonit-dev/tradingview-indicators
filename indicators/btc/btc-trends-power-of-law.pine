@@ -1,0 +1,30 @@
+//@version=6
+indicator("Bitcoin Price with Asymmetric Bands - Giovanni's Model", overlay=true)
+
+// Giovanni's Power Law parameters
+A1 = 1e-10 // 10^-10
+A2 = 1e-7 // 10^-7 A1 * A2 is too small
+n = 5.8
+// Time in days since Bitcoin's Genesis Block
+t = (time - timestamp(2009, 01, 03, 18, 15, 05)) / 86400000
+
+// Power Law regression trend
+trend(t) => A1 * math.pow(t, n) * A2
+
+// Assuming these values for asymmetry in bands, adjust as needed:
+c = 1.5
+d = 0.7
+e = 0.0002
+// Upper Band
+upperBand(t) => trend(t) * math.pow(10, c * math.exp(-e * t))
+
+// Lower Band
+lowerBand(t) => trend(t) * math.pow(10, - d * math.exp(-e * t))
+
+// Plotting
+plot(trend(t), title="Power Law Trend", color=color.blue, linewidth=2)
+
+plot(upperBand(t), title="Upper Band", color=color.green, linewidth=1)
+plot(lowerBand(t), title="Lower Band", color=color.red, linewidth=1)
+// Optional: Fill between bands for visual representation
+fill(plot(upperBand(t)), plot(lowerBand(t)), color=color.new(color.purple, 90))

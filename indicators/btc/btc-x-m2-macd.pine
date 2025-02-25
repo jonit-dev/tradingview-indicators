@@ -1,0 +1,110 @@
+//@version=5
+indicator("Global M2 vs BTC with MACD", overlay=false)
+
+// Settings
+showComponents = input.bool(false, "Show Individual Components")
+useWeighting = input.bool(true, "Use GDP Weighting")
+smoothingPeriod = input.int(3, "Smoothing Period", minval=1, maxval=12)
+fastLength = input.int(12, "MACD Fast Length", minval=1)
+slowLength = input.int(26, "MACD Slow Length", minval=1)
+signalLength = input.int(9, "MACD Signal Length", minval=1)
+showMACD = input.bool(true, "Show MACD")
+
+// Symbols
+btcSymbol = input.symbol("BITSTAMP:BTCUSD", "Bitcoin Symbol")
+
+// Retrieve money supply metrics with updated FRED identifiers
+// US M2
+usM2 = request.security("FRED:M2", timeframe.period, close)
+
+// Euro Area M2
+euroM2 = request.security("FRED:MYAGM2EZM196N", timeframe.period, close)  
+
+// Japan M2
+japanM2 = request.security("FRED:MYAGM2JPM189S", timeframe.period, close)  
+
+// China M2
+chinaM2 = request.security("FRED:MYAGM2CNM189N", timeframe.period, close)  
+
+// Bitcoin price
+btcPrice = request.security(btcSymbol, timeframe.period, close)
+
+// GDP weights as of 2023 (approximate)
+usWeight = 0.26    // ~26% of global GDP
+euroWeight = 0.19  // ~19% of global GDP
+japanWeight = 0.06 // ~6% of global GDP
+chinaWeight = 0.18 // ~18% of global GDP
+
+// Function to normalize a series to 100
+normalize_series(series) =>
+    var float firstValue = na
+    
+    for i = 0 to 500
+        if not na(series[i]) and na(firstValue)
+            firstValue := series[i]
+            break
+    
+    result = not na(firstValue) and firstValue != 0 ? series / firstValue * 100 : series
+    result
+
+// Apply weights
+weightedUsM2 = useWeighting ? usM2 * usWeight : usM2
+weightedEuroM2 = useWeighting ? euroM2 * euroWeight : euroM2
+weightedJapanM2 = useWeighting ? japanM2 * japanWeight : japanM2
+weightedChinaM2 = useWeighting ? chinaM2 * chinaWeight : chinaM2
+
+// Calculate available sum (handling missing data)
+availableCount = 0.0
+availableSum = 0.0
+
+if not na(weightedUsM2)
+    availableSum := availableSum + weightedUsM2
+    availableCount := availableCount + (useWeighting ? usWeight : 1.0)
+if not na(weightedEuroM2)
+    availableSum := availableSum + weightedEuroM2
+    availableCount := availableCount + (useWeighting ? euroWeight : 1.0)
+if not na(weightedJapanM2)
+    availableSum := availableSum + weightedJapanM2
+    availableCount := availableCount + (useWeighting ? japanWeight : 1.0)
+if not na(weightedChinaM2)
+    availableSum := availableSum + weightedChinaM2
+    availableCount := availableCount + (useWeighting ? chinaWeight : 1.0)
+
+// Final composite (weighted average to handle missing data)
+compositeM2 = availableCount > 0 ? availableSum / availableCount : na
+
+// Apply smoothing if requested
+smoothedComposite = ta.sma(compositeM2, smoothingPeriod)
+
+// Ensure both series are properly normalized
+normalizedM2 = normalize_series(smoothedComposite)
+normalizedBTC = normalize_series(btcPrice)
+
+// Calculate MACD for the relationship between M2 and BTC
+// We'll look at the ratio of BTC/M2 and apply MACD to that
+ratio = normalizedBTC / normalizedM2 * 100  // Multiply by 100 to make the scale more readable
+
+// MACD calculation on the ratio
+fastMA = ta.ema(ratio, fastLength)
+slowMA = ta.ema(ratio, slowLength)
+macd = fastMA - slowMA
+signal = ta.ema(macd, signalLength)
+histogram = macd - signal
+
+// Define colors
+bullColor = color.rgb(76, 175, 80, 50)
+bearColor = color.rgb(255, 82, 82, 50)
+histColor = macd > signal ? bullColor : bearColor
+
+ 
+
+// Plot MACD components
+plot(showMACD ? macd : na, "BTC/M2 MACD", color=color.rgb(33, 150, 243), linewidth=1)
+plot(showMACD ? signal : na, "Signal Line", color=color.rgb(255, 82, 82), linewidth=1)
+plot(showMACD ? histogram : na, "Histogram", color=histColor, style=plot.style_histogram, linewidth=2)
+
+// Plot individual M2 components with display condition
+plot(showComponents ? normalize_series(weightedUsM2) : na, "US M2", color=color.rgb(33, 150, 243, 80))
+plot(showComponents ? normalize_series(weightedEuroM2) : na, "Euro M2", color=color.rgb(255, 152, 0, 80))
+plot(showComponents ? normalize_series(weightedJapanM2) : na, "Japan M2", color=color.rgb(156, 39, 176, 80))
+plot(showComponents ? normalize_series(weightedChinaM2) : na, "China M2", color=color.rgb(244, 67, 54, 80))

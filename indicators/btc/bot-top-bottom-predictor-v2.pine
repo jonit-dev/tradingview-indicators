@@ -1,0 +1,21 @@
+//@version=5
+indicator("BTC Cycle Indicator v3", shorttitle="BTC Cycle v3", overlay=false)
+rsiW = request.security(syminfo.tickerid, "W", ta.rsi(close, 52))
+rsiMAW = request.security(syminfo.tickerid, "W", ta.sma(rsiW, 52))
+ma50W = request.security(syminfo.tickerid, "W", ta.sma(close, 50))
+ma200W = request.security(syminfo.tickerid, "W", ta.sma(close, 200))
+cycleOsc = rsiW * 0.6 + (ma50W / ma200W * 100 - 100) * 0.4
+cycleOscMA = ta.sma(cycleOsc, 14)
+overbought = 70
+oversold = 30
+strongBuy = cycleOsc < oversold and ta.crossover(rsiW, rsiMAW)
+strongSell = cycleOsc > overbought and ta.crossunder(rsiW, rsiMAW)
+buyZone = cycleOsc < 45 and cycleOsc > oversold
+sellZone = cycleOsc > 55 and cycleOsc < overbought
+bgcolor(strongBuy?color.new(color.green,70):buyZone?color.new(color.lime,80):strongSell?color.new(color.red,70):sellZone?color.new(color.orange,80):na)
+h1 = hline(overbought, "Overbought", color=color.red, linestyle=hline.style_dashed)
+h2 = hline(oversold, "Oversold", color=color.green, linestyle=hline.style_dashed)
+h3 = hline(50, "Neutral", color=color.gray, linestyle=hline.style_dotted)
+fill(h1, h2, color=color.new(color.gray,95))
+plot(cycleOsc, "Cycle Oscillator", linewidth=2)
+plot(cycleOscMA, "Oscillator MA", linewidth=1)

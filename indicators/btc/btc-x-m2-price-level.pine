@@ -1,0 +1,96 @@
+//@version=3
+study("BTC vs M2 Price Level", overlay=true)
+
+// Settings
+useWeighting = input(true, title="Use GDP Weighting")
+smoothingPeriod = input(3, title="M2 Smoothing Period", minval=1, maxval=12)
+multiplierFactor = input(1.0, title="BTC/M2 Multiplier", minval=0.1, step=0.1)
+showBands = input(true, title="Show Valuation Bands")
+
+// Symbols
+btcSymbol = input("BITSTAMP:BTCUSD", title="Bitcoin Symbol")
+
+// Retrieve money supply metrics with FRED identifiers
+// US M2
+usM2 = security("FRED:M2", timeframe.period, close)
+
+// Euro Area M2
+euroM2 = security("FRED:MYAGM2EZM196N", timeframe.period, close)
+
+// Japan M2
+japanM2 = security("FRED:MYAGM2JPM189S", timeframe.period, close)
+
+// China M2
+chinaM2 = security("FRED:MYAGM2CNM189N", timeframe.period, close)
+
+// Bitcoin price
+btcPrice = security(btcSymbol, timeframe.period, close)
+
+// GDP weights as of 2023 (approximate)
+usWeight = 0.26    // ~26% of global GDP
+euroWeight = 0.19  // ~19% of global GDP
+japanWeight = 0.06 // ~6% of global GDP
+chinaWeight = 0.18 // ~18% of global GDP
+
+// Apply weights
+weightedUsM2 = useWeighting ? usM2 * usWeight : usM2
+weightedEuroM2 = useWeighting ? euroM2 * euroWeight : euroM2
+weightedJapanM2 = useWeighting ? japanM2 * japanWeight : japanM2
+weightedChinaM2 = useWeighting ? chinaM2 * chinaWeight : chinaM2
+
+// Calculate available sum (handling missing data)
+availableCount = 0.0
+availableSum = 0.0
+
+if not na(weightedUsM2)
+    availableSum := availableSum + weightedUsM2
+    availableCount := availableCount + (useWeighting ? usWeight : 1.0)
+if not na(weightedEuroM2)
+    availableSum := availableSum + weightedEuroM2
+    availableCount := availableCount + (useWeighting ? euroWeight : 1.0)
+if not na(weightedJapanM2)
+    availableSum := availableSum + weightedJapanM2
+    availableCount := availableCount + (useWeighting ? japanWeight : 1.0)
+if not na(weightedChinaM2)
+    availableSum := availableSum + weightedChinaM2
+    availableCount := availableCount + (useWeighting ? chinaWeight : 1.0)
+
+// Final composite (weighted average to handle missing data)
+compositeM2 = availableCount > 0 ? availableSum / availableCount : na
+
+// Apply smoothing if requested
+smoothedComposite = sma(compositeM2, smoothingPeriod)
+
+// Calculate the reference values at the first available data point
+var firstM2 = float(na)
+var firstBTC = float(na)
+
+if not na(smoothedComposite) and na(firstM2)
+    firstM2 := smoothedComposite
+    firstBTC := btcPrice
+
+// Calculate a price level based on M2 growth
+m2PriceLevel = float(na)
+if not na(firstM2) and not na(firstBTC) and firstM2 > 0
+    m2Growth = smoothedComposite / firstM2
+    m2PriceLevel := firstBTC * m2Growth * multiplierFactor
+
+// Plot main M2-based price level
+plot(m2PriceLevel, title="M2 Fair Value", color=blue, linewidth=2)
+
+// Plot bands with show/hide control
+plot(showBands ? m2PriceLevel * 0.5 : na, title="Undervalued 0.5x", color=green, style=dashed, linewidth=1)
+plot(showBands ? m2PriceLevel * 0.75 : na, title="Undervalued 0.75x", color=green, style=dashed, linewidth=1)
+plot(showBands ? m2PriceLevel * 1.25 : na, title="Overvalued 1.25x", color=red, style=dashed, linewidth=1)
+plot(showBands ? m2PriceLevel * 1.5 : na, title="Overvalued 1.5x", color=red, style=dashed, linewidth=1)
+plot(showBands ? m2PriceLevel * 2.0 : na, title="Overvalued 2.0x", color=red, style=dashed, linewidth=1)
+
+// Add BTC/M2 ratio label
+if not na(m2PriceLevel) and not na(btcPrice)
+    ratio = btcPrice / m2PriceLevel
+    valueStatus = ratio < 0.75 ? "Undervalued" : ratio > 1.25 ? "Overvalued" : "Fair Value"
+    
+    labelText = "BTC/M2: " + tostring(round(ratio * 100) / 100) + "\n" + valueStatus
+    labelColor = ratio < 0.75 ? green : ratio > 1.25 ? red : blue
+    
+    label.new(bar_index, btcPrice, text=labelText, color=labelColor, style=label.style_label_down, yloc=yloc.price) 

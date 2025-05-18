@@ -1,0 +1,52 @@
+//@version=6
+//Updated by Chase Money From FinFluential on 5/3/25
+indicator('FinFluential Global M2 Money Supply // Days Offset =', overlay=true, scale=scale.right)
+
+// Allow configuration of the number of days to offset the M2 chart line in the indicator settings.
+offset = input.int(0, title="Time Offset (days)", minval=-1000, maxval=1000)
+
+
+// EUROZONE Data
+EUM2D = request.security("ECONOMICS:EUM2*FX:EURUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// North America Data
+USM2D = request.security("ECONOMICS:USM2", "D", close, lookahead=barmerge.lookahead_on)
+CAM2D = request.security("ECONOMICS:CAM2*FX_IDC:CADUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Non-EU Europe Data
+CHM2D = request.security("ECONOMICS:CHM2*FX_IDC:CHFUSD", "D", close, lookahead=barmerge.lookahead_on)
+GBM2D = request.security("ECONOMICS:GBM2*FX:GBPUSD", "D", close, lookahead=barmerge.lookahead_on)
+FIPOP = request.security("ECONOMICS:FIM2/FX_IDC:USDFIM", "D", close, lookahead=barmerge.lookahead_on)
+RUM2D = request.security("ECONOMICS:RUM2*FX_IDC:RUBUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Pacific Data
+NZM2D = request.security("ECONOMICS:NZM2*FX_IDC:NZDUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Asia Data
+CNM2D = request.security("ECONOMICS:CNM2*FX_IDC:CNYUSD", "D", close, lookahead=barmerge.lookahead_on)
+TWM2D = request.security("ECONOMICS:TWM2*FX_IDC:TWDUSD", "D", close, lookahead=barmerge.lookahead_on)
+HKM2D = request.security("ECONOMICS:HKM2*FX_IDC:HKDUSD", "D", close, lookahead=barmerge.lookahead_on)
+INM2D = request.security("ECONOMICS:INM2*FX_IDC:INRUSD", "D", close, lookahead=barmerge.lookahead_on)
+JPM2D = request.security("ECONOMICS:JPM2*FX_IDC:JPYUSD", "D", close, lookahead=barmerge.lookahead_on)
+PHM2D = request.security("ECONOMICS:PHM2*FX_IDC:PHPUSD", "D", close, lookahead=barmerge.lookahead_on)
+SGM2D = request.security("ECONOMICS:SGM2*FX_IDC:SGDUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Latin America Data
+BRM2D = request.security("ECONOMICS:BRM2*FX_IDC:BRLUSD", "D", close, lookahead=barmerge.lookahead_on)
+COM2D = request.security("ECONOMICS:COM2*FX_IDC:COPUSD", "D", close, lookahead=barmerge.lookahead_on)
+MXM2D = request.security("ECONOMICS:MXM2*FX_IDC:MXNUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Middle East Data
+AEM2D = request.security("ECONOMICS:AEM2*FX_IDC:AEDUSD", "D", close, lookahead=barmerge.lookahead_on)
+TRM2D = request.security("ECONOMICS:TRM2*FX_IDC:TRYUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Africa Data
+ZAM2D = request.security("ECONOMICS:ZAM2*FX_IDC:ZARUSD", "D", close, lookahead=barmerge.lookahead_on)
+
+// Calculate Global Money Supply M2
+total = (EUM2D + USM2D + CAM2D + CHM2D + GBM2D + FIPOP + RUM2D + NZM2D + CNM2D + TWM2D + HKM2D + INM2D + JPM2D + PHM2D + SGM2D + BRM2D + COM2D + MXM2D + AEM2D + TRM2D + ZAM2D) / 10000000000000
+
+time_offset = offset * 86400000 
+shifted_time = time - time_offset
+
+plot(total, color=color.yellow, linewidth=2, offset=offset)

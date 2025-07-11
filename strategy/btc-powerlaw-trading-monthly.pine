@@ -1,0 +1,148 @@
+//@version=5
+strategy("BTC - Power Law Oscillator Strategy", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// Calculate the days since Bitcoin's inception (January 3, 2009)
+var inceptionDate = timestamp(2009, 1, 3, 0, 0)
+daysSinceInception = (time - inceptionDate) / 86400000
+
+// Define the exponential model: price = exp(5.71 * ln(days) - 38.16)
+modelPrice = math.exp(5.71 * math.log(daysSinceInception) - 38.16)
+
+// Calculate the Power Law Oscillator as the percentage deviation from the model price
+oscillator = ((close - modelPrice) / modelPrice) * 100
+
+// Input for the percentile calculation period
+length = input.int(200, minval=1, title="Percentile Calculation Period")
+
+// Create arrays to store oscillator values
+var float[] osc_values = array.new_float(0)
+
+// Update the array with the latest oscillator value
+if barstate.isrealtime or barstate.isconfirmed
+    array.unshift(osc_values, oscillator)
+    if array.size(osc_values) > length
+        array.pop(osc_values)
+
+// Function to calculate percentiles
+percentile(float[] arr, float percent) =>
+    arr_sorted = array.copy(arr)
+    array.sort(arr_sorted, order.ascending)
+    index = math.floor((array.size(arr_sorted) - 1) * percent / 100)
+    array.get(arr_sorted, index)
+
+// Calculate upper and lower bands based on percentiles
+upper_percentile = input.float(90, "Upper Percentile", minval=50, maxval=100)
+lower_percentile = input.float(45, "Lower Percentile", minval=0, maxval=50)
+
+upperBand = percentile(osc_values, upper_percentile)
+lowerBand = percentile(osc_values, lower_percentile)
+
+// Strategy Optimization Inputs
+enable_reentry = input.bool(false, "Enable Red Line Re-entry", tooltip="If disabled, only enters on green zone")
+min_hold_bars = input.int(7, "Minimum Hold Period (bars)", minval=1, tooltip="Minimum bars to hold position before allowing exit")
+partial_reentry = input.bool(true, "Use Partial Re-entry Size", tooltip="Use smaller position size for red line re-entries")
+reentry_percent = input.float(50.0, "Re-entry Position Size %", minval=10, maxval=100, tooltip="Position size for red line re-entries")
+wide_stop_multiplier = input.float(3.0, "Wide ATR Stop Multiplier", minval=1.0, step=0.1, tooltip="Wider stop to avoid whipsaws")
+
+// ATR Trailing Stop Parameters
+atr_length = input.int(14, "ATR Length", minval=1)
+atr_multiplier = wide_stop_multiplier // Use the wider multiplier
+
+// Calculate ATR
+atr = ta.atr(atr_length)
+
+// ATR Trailing Stop Logic with minimum hold period
+var float trailing_stop = na
+var bool in_position = false
+var int entry_bar = 0
+
+// Calculate trailing stop level
+if strategy.position_size > 0
+    new_stop = close - (atr * atr_multiplier)
+    trailing_stop := na(trailing_stop) ? new_stop : math.max(trailing_stop, new_stop)
+else
+    trailing_stop := na
+
+// Entry Conditions with improvements
+green_zone_entry = oscillator < lowerBand and oscillator[1] >= lowerBand[1]  // Crossing into green zone
+red_line_reentry = enable_reentry and oscillator > upperBand and oscillator[1] <= upperBand[1]  // Crossing red line bottom up
+
+buy_signal = (green_zone_entry or red_line_reentry) and strategy.position_size == 0
+
+// Exit Conditions with minimum hold period
+bars_in_position = strategy.position_size > 0 ? bar_index - entry_bar : 0
+can_exit = bars_in_position >= min_hold_bars
+trailing_stop_hit = strategy.position_size > 0 and not na(trailing_stop) and close < trailing_stop and can_exit
+
+// Strategy Execution with position sizing
+if buy_signal
+    entry_bar := bar_index
+    
+    if green_zone_entry
+        strategy.entry("Long", strategy.long, comment="Green Zone Entry")
+    else if red_line_reentry
+        // Use partial position size for re-entries if enabled
+        if partial_reentry
+            // Calculate partial size based on current equity
+            partial_qty = strategy.equity * (reentry_percent / 100.0) / close
+            strategy.entry("Long", strategy.long, qty=partial_qty, comment="Red Line Re-entry")
+        else
+            strategy.entry("Long", strategy.long, comment="Red Line Re-entry")
+    
+    in_position := true
+
+if strategy.position_size > 0 and trailing_stop_hit
+    strategy.close("Long", comment="ATR Stop")
+    in_position := false
+
+// Plotting on main chart
+plot(strategy.position_size > 0 ? trailing_stop : na, "ATR Trailing Stop", color=color.red, linewidth=2, style=plot.style_linebr)
+
+// Plot buy/sell signals
+plotshape(green_zone_entry and strategy.position_size == 0, title="Green Zone Buy", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.normal)
+plotshape(red_line_reentry and strategy.position_size == 0, title="Red Line Re-entry", location=location.belowbar, color=color.orange, style=shape.triangleup, size=size.small)
+plotshape(trailing_stop_hit, title="ATR Stop Exit", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.normal)
+
+// Create a separate pane for the oscillator
+oscillator_plot = plot(oscillator, color=color.white, linewidth=2, title="Power Law Oscillator")
+upper_plot = plot(upperBand, color=color.red, linewidth=2, title="Upper Band (Red Line)")
+lower_plot = plot(lowerBand, color=color.green, linewidth=2, title="Lower Band (Green Zone)")
+
+// Highlight zones in the oscillator pane
+bgcolor(oscillator > upperBand ? color.new(color.red, 80) : na)
+bgcolor(oscillator < lowerBand ? color.new(color.green, 80) : na)
+
+// Add zero line for reference
+hline(0, "Zero Line", color=color.gray, linestyle=hline.style_dashed)
+
+// Strategy Information Table
+if barstate.islastconfirmedhistory
+    var table info_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1)
+    table.cell(info_table, 0, 0, "Strategy Stats", text_color=color.black, text_size=size.normal)
+    table.cell(info_table, 1, 0, "", text_color=color.black)
+    
+    table.cell(info_table, 0, 1, "Current Oscillator", text_color=color.black)
+    table.cell(info_table, 1, 1, str.tostring(oscillator, "#.##"), text_color=color.black)
+    
+    table.cell(info_table, 0, 2, "Upper Band", text_color=color.black)
+    table.cell(info_table, 1, 2, str.tostring(upperBand, "#.##"), text_color=color.black)
+    
+    table.cell(info_table, 0, 3, "Lower Band", text_color=color.black)
+    table.cell(info_table, 1, 3, str.tostring(lowerBand, "#.##"), text_color=color.black)
+    
+    table.cell(info_table, 0, 4, "Position Size", text_color=color.black)
+    table.cell(info_table, 1, 4, str.tostring(strategy.position_size, "#.####"), text_color=color.black)
+    
+    table.cell(info_table, 0, 5, "Trailing Stop", text_color=color.black)
+    table.cell(info_table, 1, 5, strategy.position_size > 0 ? str.tostring(trailing_stop, "#.##") : "N/A", text_color=color.black)
+    
+    table.cell(info_table, 0, 6, "Min Hold Period", text_color=color.black)
+    table.cell(info_table, 1, 6, str.tostring(min_hold_bars) + " bars", text_color=color.black)
+    
+    table.cell(info_table, 0, 7, "Bars in Position", text_color=color.black)
+    table.cell(info_table, 1, 7, strategy.position_size > 0 ? str.tostring(bars_in_position) : "0", text_color=color.black)
+
+// Alert Conditions
+alertcondition(green_zone_entry and strategy.position_size == 0, title="Green Zone Buy Signal", message="BTC Power Law: Buy signal - entering green zone")
+alertcondition(red_line_reentry and strategy.position_size == 0, title="Red Line Re-entry Signal", message="BTC Power Law: Re-entry signal - crossed red line bottom up")
+alertcondition(trailing_stop_hit, title="ATR Trailing Stop Hit", message="BTC Power Law: ATR trailing stop hit - position closed")

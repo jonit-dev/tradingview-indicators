@@ -18,10 +18,9 @@ length = input.int(200, minval=1, title="Percentile Calculation Period")
 var float[] osc_values = array.new_float(0)
 
 // Update the array with the latest oscillator value
-if barstate.isrealtime or barstate.isconfirmed
-    array.unshift(osc_values, oscillator)
-    if array.size(osc_values) > length
-        array.pop(osc_values)
+array.unshift(osc_values, oscillator)
+if array.size(osc_values) > length
+    array.pop(osc_values)
 
 // Function to calculate percentiles
 percentile(float[] arr, float percent) =>
@@ -148,17 +147,7 @@ plotshape(enable_shorts and long_trailing_stop_hit, title="Short Entry", locatio
 plotshape(short_exit_signal, title="Short Exit (Green Zone)", location=location.belowbar, color=color.lime, style=shape.triangleup, size=size.small)
 plotshape(short_stop_hit, title="Short ATR Stop", location=location.belowbar, color=color.orange, style=shape.triangleup, size=size.normal)
 
-// Create a separate pane for the oscillator
-oscillator_plot = plot(oscillator, color=color.white, linewidth=2, title="Power Law Oscillator")
-upper_plot = plot(upperBand, color=color.red, linewidth=2, title="Upper Band (Red Line)")
-lower_plot = plot(lowerBand, color=color.green, linewidth=2, title="Lower Band (Green Zone)")
-
-// Highlight zones in the oscillator pane
-bgcolor(oscillator > upperBand ? color.new(color.red, 80) : na)
-bgcolor(oscillator < lowerBand ? color.new(color.green, 80) : na)
-
-// Add zero line for reference
-hline(0, "Zero Line", color=color.gray, linestyle=hline.style_dashed)
+// Oscillator plots removed - only showing entry/exit signals on chart
 
 // Strategy Information Table
 if barstate.islastconfirmedhistory

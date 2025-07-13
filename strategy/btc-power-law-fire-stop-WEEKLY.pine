@@ -1,12 +1,17 @@
 //@version=5
-strategy("BTC – Fire-stop + White-cross re-entry", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+strategy("BTC – Fire-stop + White-cross re-entry", overlay=true, initial_capital=10000)
 
 // --- INPUTS ---
 length = input.int(200, "PowerLaw pct length")
 upperPct = input.float(90, "Upper percentile")
 lowerPct = input.float(45, "Lower percentile")
 atrLen = input.int(14, "ATR length")
-atrMult = input.float(2, "ATR mult")
+atrMult = input.float(1, "ATR mult")
+// Leverage inputs
+enableLeverage = input.bool(true, "Enable Leverage", group="Leverage")
+waitBars = input.int(5, "Bars to wait before adding", minval=1, maxval=20, group="Leverage")
+leverageStep = input.float(10, "Position step %", minval=5, maxval=50, step=5, group="Leverage")
+maxLeverage = input.float(150, "Max position %", minval=100, maxval=300, step=10, group="Leverage")
 
 // --- DATA ---
 btcClose = request.security("BTCUSD", timeframe.period, close)
@@ -39,17 +44,42 @@ fire = osc > ploUpper and relStr > 8
 ice = osc < ploLower and relStr < -2
 crossUp = ta.crossover(osc, ploLower)
 
+// --- POSITION SIZING ---
+calculateQty(percentOfEquity) =>
+    math.floor(strategy.equity * percentOfEquity / 100 / close)
+
 // --- STRATEGY ---
 var float stopLevel = na
+var int barsSinceEntry = 0
+var int addCount = 0
 
-// Reset stop when position is closed
+// Track bars since entry
+if strategy.position_size > 0
+    barsSinceEntry := barsSinceEntry + 1
+
+// Reset when position is closed
 if strategy.position_size == 0
     stopLevel := na
+    barsSinceEntry := 0
+    addCount := 0
+// Also reset if position just closed
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    stopLevel := na
+    addCount := 0
 
-// Fire condition: Set trailing stop if in position
+// Fire condition: Deleverage and set trailing stop
 if fire and strategy.position_size > 0
+    // Deleverage if we have adds - close only the added positions
+    if enableLeverage and addCount > 0
+        // Calculate total added percentage to remove
+        totalAdded = addCount * leverageStep
+        qtyToClose = calculateQty(totalAdded)
+        strategy.order("Deleverage", strategy.short, qty=qtyToClose, comment="Fire deleverage")
+        addCount := 0
+        label.new(bar_index, high, "🔥💸", style=label.style_none, size=size.large, yloc=yloc.abovebar)
+    
+    // Always set/update trailing stop
     newStop = low - atrMult * ta.atr(atrLen)
-    // Only update stop if new level is higher (trailing) and valid
     if not na(newStop) and (na(stopLevel) or newStop > stopLevel)
         stopLevel := newStop
 
@@ -58,19 +88,44 @@ if strategy.position_size > 0 and not na(stopLevel)
     strategy.exit("FireStop", from_entry="Long", stop=stopLevel)
 
 // Entry conditions (only when flat)
+basePositionSize = 100.0  // Always start with 100% like original
+
 if crossUp and strategy.position_size == 0
-    strategy.entry("Long", strategy.long, comment="CrossUp re-entry")
+    qty = calculateQty(basePositionSize)
+    strategy.entry("Long", strategy.long, qty=qty, comment="CrossUp re-entry")
+    barsSinceEntry := 0
 
 if ice and strategy.position_size == 0
-    strategy.entry("Long", strategy.long, comment="Ice entry")
+    qty = calculateQty(basePositionSize)
+    strategy.entry("Long", strategy.long, qty=qty, comment="Ice entry")
+    barsSinceEntry := 0
+
+// Add to position on ice signals (if leverage enabled)
+if ice and strategy.position_size > 0 and enableLeverage and barsSinceEntry >= waitBars
+    currentLeverage = basePositionSize + (addCount * leverageStep)
+    if currentLeverage < maxLeverage
+        qty = calculateQty(leverageStep)
+        strategy.entry("Add" + str.tostring(addCount + 1), strategy.long, qty=qty, comment="Ice add")
+        addCount := addCount + 1
+        barsSinceEntry := 0
+        label.new(bar_index, low, "💰" + str.tostring(currentLeverage + leverageStep) + "%", style=label.style_none, size=size.normal, yloc=yloc.belowbar)
 
 // First departure from green zone entry (osc was above lower band, now below)
 greenZoneDeparture = osc[1] > ploLower and osc < ploLower and strategy.position_size == 0
 if greenZoneDeparture
-    strategy.entry("Long", strategy.long, comment="Green zone departure")
+    qty = calculateQty(basePositionSize)
+    strategy.entry("Long", strategy.long, qty=qty, comment="Green zone departure")
+    barsSinceEntry := 0
 
 // --- VISUAL DEBUGGING ---
 plot(strategy.position_size > 0 and not na(stopLevel) ? stopLevel : na, "Stop Level", color=color.red, style=plot.style_linebr, linewidth=2)
+
+// Show current leverage in top corner
+if barstate.islast and strategy.position_size > 0 and enableLeverage
+    currentLev = basePositionSize + (addCount * leverageStep)
+    var label levLabel = na
+    label.delete(levLabel)
+    levLabel := label.new(bar_index + 5, high, "Leverage: " + str.tostring(currentLev) + "%", style=label.style_label_left, color=color.new(color.blue, 70), textcolor=color.white, yloc=yloc.price, y=high * 1.05)
 
 // --- EMOJI LABELS ---
 if fire
